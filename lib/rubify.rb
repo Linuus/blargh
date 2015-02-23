@@ -14,6 +14,11 @@ module Rubify
       fetch_csrf_token
     end
 
+    def play_percent
+      stats = status
+      (status["playing_position"]/status["track"]["length"] * 100).round.to_s + "%"
+    end
+
     def status
       get('/remote/status.json').body
     end
@@ -54,16 +59,14 @@ module Rubify
 
     def fetch_oauth_token
       oauth_connection = Faraday.new(
-        url: 'https://embed.spotify.com/remote-control-bridge/'
+        url: 'https://open.spotify.com/token'
       ) do |config|
+        config.response :json
         config.adapter Faraday.default_adapter
       end
 
-      response = oauth_connection.get do |request|
-        request.headers['Referer'] = 'https://embed.spotify.com/remote-control-bridge/'
-        request.headers['Origin'] = 'https://embed.spotify.com/'
-      end
-      self.oauth_token = response.body[/tokenData = '(.*)'/, 1]
+      response = oauth_connection.get
+      self.oauth_token = response.body["t"]
     end
 
     def fetch_csrf_token
