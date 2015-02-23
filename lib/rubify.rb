@@ -9,10 +9,28 @@ module Rubify
     attr_accessor :oauth_token, :csrf_token, :domain
 
     def initialize
-      @domain = 'https://' + ('a'..'z').to_a.shuffle.first(10).join + '.spotilocal.com:4371'
+      @domain = 'https://' + SecureRandom.urlsafe_base64(10) + ".spotilocal.com:#{PORT}"
       fetch_oauth_token
       fetch_csrf_token
     end
+
+    def status
+      get('/remote/status.json').body
+    end
+
+    def play(spotify_uri)
+      get('/remote/play.json', uri: spotify_uri, context: spotify_uri).body
+    end
+
+    def pause(should_pause = true)
+      get('/remote/pause.json', pause: should_pause).body
+    end
+
+    def unpause
+      pause(false)
+    end
+
+    private
 
     def get(url, params = {})
       @connection ||= Faraday.new(
