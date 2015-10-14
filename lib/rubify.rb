@@ -1,6 +1,7 @@
 require 'rubify/version'
 require 'faraday'
 require 'faraday_middleware'
+require 'rspotify'
 
 module Rubify
   class Player
@@ -18,6 +19,10 @@ module Rubify
       get('/remote/status.json').body
     end
 
+    def playing?
+      get('/remote/status.json').body["playing"]
+    end
+
     def play(spotify_uri)
       get('/remote/play.json', uri: spotify_uri, context: spotify_uri).body
     end
@@ -28,6 +33,17 @@ module Rubify
 
     def unpause
       pause(false)
+    end
+
+    def play_search(artist: nil, track: '')
+      search = ::RSpotify::Track.search(track)
+      return "No match" if search.empty?
+      track_uri = if artist.nil?
+                    search.first.uri
+                  else
+                    search.find { |tracks| tracks.artists.any? { |a| a.name == track } }
+                  end
+      play(track_uri)
     end
 
     private
