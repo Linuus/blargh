@@ -5,14 +5,25 @@ require 'rspotify'
 
 module Rubify
   class Player
-    PORT = 4371.freeze
+    PORT = 4370
 
     attr_accessor :oauth_token, :csrf_token, :domain
 
     def initialize
       @domain = 'https://' + SecureRandom.urlsafe_base64(10) + ".spotilocal.com:#{PORT}"
-      fetch_oauth_token
-      fetch_csrf_token
+      fetch_tokens if running?
+    end
+
+    def running?
+      version.fetch('running', true)
+    end
+
+    def version
+      get('/service/version.json', params: { service: 'remote' }).body
+    end
+
+    def open
+      get('/remote/open.json').body
     end
 
     def status
@@ -20,15 +31,25 @@ module Rubify
     end
 
     def playing?
-      get('/remote/status.json').body["playing"]
+      get('/remote/status.json').body['playing']
+    end
+
+    def play_percent
+      _status = status
+      (_status['playing_position']/_status['track']['length'] * 100).round.to_s + '%'
+    end
+
+    def current_track
+      _status = status
+      "#{_status['track']['artist_resource']['name']} - #{_status['track']['track_resource']['name']}"
     end
 
     def play(spotify_uri)
-      get('/remote/play.json', uri: spotify_uri, context: spotify_uri).body
+      get('/remote/play.json', params: { uri: spotify_uri, context: spotify_uri }).body
     end
 
     def pause(should_pause = true)
-      get('/remote/pause.json', pause: should_pause).body
+      get('/remote/pause.json', params: { pause: should_pause }).body
     end
 
     def unpause
@@ -37,18 +58,25 @@ module Rubify
 
     def play_search(artist: nil, track: '')
       search = ::RSpotify::Track.search(track)
-      return "No match" if search.empty?
-      track_uri = if artist.nil?
-                    search.first.uri
+      candidate = if artist.nil?
+                    search.first
                   else
-                    search.find { |tracks| tracks.artists.any? { |a| a.name == track } }
+                    search.find { |tracks| tracks.artists.any? { |a| a.name.downcase == artist.downcase } }
                   end
-      play(track_uri)
+      if candidate
+        play(candidate.uri)
+      else
+        puts 'No match'
+      end
     end
 
     private
 
-    def get(url, params = {})
+    def get(url, params: {}, headers: {})
+      default_headers = {
+        'Referer' => 'https://embed.spotify.com/remote-control-bridge/',
+        'Origin'  => 'https://embed.spotify.com/'
+      }
       @connection ||= Faraday.new(
         url: domain,
         ssl: { verify: false }
@@ -63,9 +91,16 @@ module Rubify
       @connection.get do |request|
         request.url url
         request.params = params
-        request.headers['Referer'] = 'https://embed.spotify.com/remote-control-bridge/'
-        request.headers['Origin'] = 'https://embed.spotify.com/'
+        request.headers = default_headers.merge(headers)
       end
+
+    rescue Faraday::ConnectionFailed
+      puts 'Connection failed. Player is probably not running.'
+    end
+
+    def fetch_tokens
+      fetch_oauth_token
+      fetch_csrf_token
     end
 
     def fetch_oauth_token
